@@ -78,8 +78,9 @@ extern lv_group_t *g;
 
 void LCD_IO_WriteData(uint16_t RegValue);
 
+// Slot 0 is the Tool > Level / Mesh > Build command. See DEFAULT_AUTO_LEVEL_GCODE.
 static const char custom_gcode_command[][100] = {
-  "G29N\nM500",
+  DEFAULT_AUTO_LEVEL_GCODE,
   "G28",
   "G28",
   "G28",
@@ -166,6 +167,23 @@ void gCfgItems_init() {
     W25QXX.SPI_FLASH_BufferWrite((uint8_t *)&custom_gcode_command[3], OTHERS_COMMAND_ADDR_3, 100);
     W25QXX.SPI_FLASH_BufferWrite((uint8_t *)&custom_gcode_command[4], OTHERS_COMMAND_ADDR_4, 100);
   }
+
+  #if ENABLED(AUTO_BED_LEVELING_UBL)
+    // One-time upgrade for boards whose SPI flash still holds the pre-UBL
+    // default. "G29N" has no phase, so UBL would run it and probe nothing,
+    // making the Level button look dead. A hand-written UBL command (which
+    // always names a phase) is left alone.
+    {
+      char stored[100];
+      get_gcode_command(AUTO_LEVELING_COMMAND_ADDR, (uint8_t *)stored);
+      stored[COUNT(stored) - 1] = '\0';
+      if (!strstr(stored, "G29 P") && !strstr(stored, "G29P")) {
+        char def[100];
+        memcpy(def, custom_gcode_command[0], sizeof(def));
+        update_gcode_command(AUTO_LEVELING_COMMAND_ADDR, (uint8_t *)def);
+      }
+    }
+  #endif
 
   const byte rot = (TFT_ROTATION & TFT_ROTATE_180) ? 0xEE : 0x00;
   if (gCfgItems.disp_rotation_180 != rot) {
@@ -459,6 +477,12 @@ char *getDispText(int index) {
 
     #if ENABLED(PROBE_OFFSET_WIZARD)
       case Z_OFFSET_WIZARD_UI: break;
+    #endif
+    #if HAS_BED_PROBE
+      case BLTOUCH_UI: break;
+    #endif
+    #if HAS_MESH
+      case MESH_VIEW_UI: break;
     #endif
     case OPERATE_UI:
       switch (disp_state_stack._disp_state[disp_state_stack._disp_index]) {
@@ -793,6 +817,24 @@ void GUI_RefreshPage() {
       case Z_OFFSET_WIZARD_UI: break;
     #endif
 
+    #if HAS_BED_PROBE
+      case BLTOUCH_UI:
+        if (temps_update_flag) {
+          temps_update_flag = false;
+          disp_bltouch_z_offset_value();
+        }
+        break;
+    #endif
+
+    #if HAS_MESH
+      case MESH_VIEW_UI:
+        if (temps_update_flag) {
+          temps_update_flag = false;
+          disp_mesh_visualizer();   // fills in as probing progresses
+        }
+        break;
+    #endif
+
     #if ENABLED(MKS_WIFI_MODULE)
       case WIFI_UI:
         if (temps_update_flag) {
@@ -895,6 +937,12 @@ void clear_cur_ui() {
     case MOVE_MOTOR_UI:               lv_clear_move_motor(); break;
     #if ENABLED(PROBE_OFFSET_WIZARD)
       case Z_OFFSET_WIZARD_UI:        lv_clear_z_offset_wizard(); break;
+    #endif
+    #if HAS_BED_PROBE
+      case BLTOUCH_UI:                lv_clear_bltouch_settings(); break;
+    #endif
+    #if HAS_MESH
+      case MESH_VIEW_UI:              lv_clear_mesh_visualizer(); break;
     #endif
     case OPERATE_UI:                  lv_clear_operation(); break;
     case PAUSE_UI:                    break;
@@ -1006,6 +1054,12 @@ void draw_return_ui() {
       case MOVE_MOTOR_UI:               lv_draw_move_motor(); break;
       #if ENABLED(PROBE_OFFSET_WIZARD)
         case Z_OFFSET_WIZARD_UI:        lv_draw_z_offset_wizard(); break;
+      #endif
+      #if HAS_BED_PROBE
+        case BLTOUCH_UI:                lv_draw_bltouch_settings(); break;
+      #endif
+      #if HAS_MESH
+        case MESH_VIEW_UI:              lv_draw_mesh_visualizer(); break;
       #endif
       case OPERATE_UI:                  lv_draw_operation(); break;
       case PAUSE_UI:                    break;

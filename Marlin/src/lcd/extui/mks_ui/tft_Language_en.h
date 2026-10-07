@@ -103,6 +103,17 @@
 #define LEVELING_AUTO_COMMAND_EN        "AutoLeveling command settings"
 #define LEVELING_AUTO_ZOFFSET_EN        "Nozzle-to-probe offsets settings"
 
+#define BLTOUCH_LEVELING_TITTLE_EN      "BLTouch"
+#define BLTOUCH_LEVELING_EN             "BLTouch Settings"
+#define BLTOUCH_INIT_EN                 "Reset & Probe"
+#define BLTOUCH_ZOFFSETPOS_EN           "Z Offset +"
+#define BLTOUCH_ZOFFSETNEG_EN           "Z Offset -"
+#define BLTOUCH_SAVE_EN                 "Save Offset"
+#define BLTOUCH_TEST_EN                 "Re-Probe"
+#define MESH_VIEW_TITTLE_EN             "Mesh"
+#define MESH_BUILD_EN                   "Build Mesh"
+#define MESH_SAVE_EN                    "Save Mesh"
+
 #define LEVELING_ZOFFSET_TITLE_EN       "Machine Settings>Z Offset Wizard"
 
 #define LEVELING_PARA_CONF_TITLE_EN     "leveling setting"

@@ -63,6 +63,19 @@ media_select_menu_def        media_select_menu;
 
 machine_common_def machine_menu;
 void machine_setting_disp() {
+  // Screens added after the MKS translations were made: English for every
+  // language so a language switch can never leave a null string behind.
+  machine_menu.BLTouchLevelingConfTitle = BLTOUCH_LEVELING_TITTLE_EN;
+  machine_menu.BLTouchLevelingConf      = BLTOUCH_LEVELING_EN;
+  machine_menu.BLTouchInit              = BLTOUCH_INIT_EN;
+  machine_menu.BLTouchOffsetpos         = BLTOUCH_ZOFFSETPOS_EN;
+  machine_menu.BLTouchOffsetneg         = BLTOUCH_ZOFFSETNEG_EN;
+  machine_menu.BLTouchSave              = BLTOUCH_SAVE_EN;
+  machine_menu.BLTouchTest              = BLTOUCH_TEST_EN;
+  machine_menu.MeshViewTitle            = MESH_VIEW_TITTLE_EN;
+  machine_menu.MeshBuild                = MESH_BUILD_EN;
+  machine_menu.MeshSave                 = MESH_SAVE_EN;
+
   if (gCfgItems.language == LANG_SIMPLE_CHINESE) {
     MachinePara_menu.title              = MACHINE_PARA_TITLE_CN;
     MachinePara_menu.MachineSetting     = MACHINE_TYPE_CNOFIG_CN;

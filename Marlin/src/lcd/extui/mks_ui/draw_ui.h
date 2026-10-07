@@ -70,6 +70,8 @@
 #include "draw_tmc_step_mode_settings.h"
 #include "draw_level_settings.h"
 #include "draw_z_offset_wizard.h"
+#include "draw_bltouch_settings.h"
+#include "draw_mesh_visualizer.h"
 #include "draw_tramming_pos_settings.h"
 #include "draw_auto_level_offset_settings.h"
 #include "draw_filament_change.h"
@@ -261,6 +263,15 @@ typedef struct UI_Config_Struct {
         current_e_position_bak;
 } UI_CFG;
 
+// The default Tool > Level / Mesh > Build command, also the fallback when the
+// stored one is unusable. UBL probes nothing from a bare "G29" -- it needs
+// explicit phases -- so the default depends on the leveling system.
+#if ENABLED(AUTO_BED_LEVELING_UBL)
+  #define DEFAULT_AUTO_LEVEL_GCODE "G28\nG29 P1\nG29 P3\nG29 S1\nM500\nG29 A"
+#else
+  #define DEFAULT_AUTO_LEVEL_GCODE "G29N\nM500"
+#endif
+
 typedef enum {
   MAIN_UI,
   PRINT_READY_UI,
@@ -268,6 +279,8 @@ typedef enum {
   PRINTING_UI,
   MOVE_MOTOR_UI,
   Z_OFFSET_WIZARD_UI,
+  BLTOUCH_UI,
+  MESH_VIEW_UI,
   OPERATE_UI,
   PAUSE_UI,
   EXTRUSION_UI,
