@@ -1,95 +1,149 @@
-<p align="center"><img src="buildroot/share/pixmaps/logo/marlin-outrun-nf-500.png" height="250" alt="MarlinFirmware's logo" /></p>
+<p align="center"><img src="buildroot/share/pixmaps/logo/marlin-outrun-nf-500.png" height="180" alt="Marlin Firmware logo" /></p>
 
-<h1 align="center">Marlin 3D Printer Firmware</h1>
+<h1 align="center">Marlin 2.0.9.10 — MKS Robin Nano V3.1 (Enhanced &amp; Tested)</h1>
 
 <p align="center">
-    <a href="/LICENSE"><img alt="GPL-V3.0 License" src="https://img.shields.io/github/license/marlinfirmware/marlin.svg"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/marlinfirmware/marlin.svg"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/releases"><img alt="Last Release Date" src="https://img.shields.io/github/release-date/MarlinFirmware/Marlin"></a>
-    <a href="https://github.com/MarlinFirmware/Marlin/actions"><img alt="CI Status" src="https://github.com/MarlinFirmware/Marlin/actions/workflows/test-builds.yml/badge.svg"></a>
-    <a href="https://github.com/sponsors/thinkyhead"><img alt="GitHub Sponsors" src="https://img.shields.io/github/sponsors/thinkyhead?color=db61a2"></a>
-    <br />
-    <a href="https://twitter.com/MarlinFirmware"><img alt="Follow MarlinFirmware on Twitter" src="https://img.shields.io/twitter/follow/MarlinFirmware?style=social&logo=twitter"></a>
+  <a href="/LICENSE"><img alt="GPL-3.0 License" src="https://img.shields.io/badge/license-GPL--3.0-blue.svg"></a>
+  <img alt="Marlin 2.0.9.10" src="https://img.shields.io/badge/Marlin-2.0.9.10-brightgreen.svg">
+  <img alt="Board" src="https://img.shields.io/badge/board-MKS%20Robin%20Nano%20V3.1-orange.svg">
+  <img alt="UI" src="https://img.shields.io/badge/UI-TFT__LVGL__UI%20(MKS%20TS35)-informational.svg">
+  <img alt="Printer" src="https://img.shields.io/badge/printer-Creality%20CR--10-lightgrey.svg">
 </p>
 
-Additional documentation can be found at the [Marlin Home Page](https://marlinfw.org/).
-Please test this firmware and let us know if it misbehaves in any way. Volunteers are standing by!
+A working, flashed-and-printed-on build of **Marlin 2.0.9.10** for the **MKS Robin Nano V3.1**
+with the **MKS TS35 touchscreen**, TMC2209 drivers, BLTouch and UBL — set up for a
+**Creality CR-10** running the Robin Nano as a board upgrade.
 
-## Marlin 2.0
+Stock Marlin runs on this board, but several things on the MKS LVGL touchscreen are either
+missing or dead-on-arrival: the **Level** button does nothing under UBL, there is no way to set
+the Z probe offset from the screen, there is no mesh display, and out of the box **every print
+aborts a few milliseconds after it starts** with "Power Outage / PRINTER HALTED" on boards with
+no PW_DET module fitted. This fork fixes those and adds the screens that were missing.
 
-Marlin 2.0 takes this popular RepRap firmware to the next level by adding support for much faster 32-bit and ARM-based boards while improving support for 8-bit AVR boards. Read about Marlin's decision to use a "Hardware Abstraction Layer" below.
+Everything in here was built, flashed and used on real hardware — not a config dump.
 
-Download earlier versions of Marlin on the [Releases page](https://github.com/MarlinFirmware/Marlin/releases).
+---
 
-## Example Configurations
+## What's different from stock Marlin 2.0.9.10
 
-Before building Marlin you'll need to configure it for your specific hardware. Your vendor should have already provided source code with configurations for the installed firmware, but if you ever decide to upgrade you'll need updated configuration files. Marlin users have contributed dozens of tested example configurations to get you started. Visit the [MarlinFirmware/Configurations](https://github.com/MarlinFirmware/Configurations) repository to find the right configuration for your hardware.
+### New touchscreen features
 
-## Building Marlin 2.0
+| Added | Where on the screen |
+|---|---|
+| **BLTouch settings screen** — live Z-offset babystepping (`M290`), reset &amp; probe, selectable 0.01 / 0.05 / 0.1 mm step, re-probe, `M500` save | `Settings > Machine Para > Leveling > BLTouch` |
+| **Mesh visualizer** — UBL mesh heatmap, Build Mesh, Save Mesh | `… > BLTouch > Mesh`, and `Advanced > Mesh` |
+| **Editable auto-level command** — on-screen keyboard, stored in SPI flash, used by the Tool **Level** button | `Settings > Machine Para > Leveling > Auto-level command` |
+| **Working Level button** — injects a real UBL phase sequence instead of a bare `G29` | `Tool > Level` |
+| **Paginated Advanced settings** — second page for Z Offset Wizard, BLTouch, Mesh | `Settings > Machine Para > Advanced` |
+| **Custom menu items on the touchscreen** — `CUSTOM_MENU_MAIN` G-code macros surfaced in the LVGL UI | `Tool > More` |
 
-To build Marlin 2.0 you'll need [Arduino IDE 1.8.8 or newer](https://www.arduino.cc/en/main/software) or [PlatformIO](http://docs.platformio.org/en/latest/ide.html#platformio-ide). Detailed build and install instructions are posted at:
+### Fixes
 
-  - [Installing Marlin (Arduino)](http://marlinfw.org/docs/basics/install_arduino.html)
-  - [Installing Marlin (VSCode)](http://marlinfw.org/docs/basics/install_platformio_vscode.html).
+- **`POWER_LOSS_PIN -1`** — the board header defines `PA13` (PW_DET) whether or not a detect
+  module is installed. PA13 is SWDIO and floats HIGH, which matches `POWER_LOSS_STATE`, so three
+  polls into any print Marlin kills the heaters and halts. Disabling the pin keeps power-loss
+  recovery working in journalled mode. Only set it back after an MKS PW_DET module is wired in.
+- **UBL-aware level command** — a bare `G29` does nothing under UBL. The stored default is now
+  `G28 / G29 P1 / G29 P3 / G29 S1 / M500 / G29 A`, and an old `G29N\nM500` string left in SPI
+  flash is upgraded once on boot.
+- **`RESTORE_LEVELING_AFTER_G28`** on, so a slicer's `G28` start G-code can't silently drop
+  the mesh.
+- Multi-line G-code is injected with `queue.enqueue_now_P()` instead of
+  `queue.enqueue_one_now()`, which does not split on `\n` and silently ran only the first line.
 
-### Supported Platforms
+### Tuned configuration
 
-  Platform|MCU|Example Boards
-  --------|---|-------
-  [Arduino AVR](https://www.arduino.cc/)|ATmega|RAMPS, Melzi, RAMBo
-  [Teensy++ 2.0](https://www.microchip.com/en-us/product/AT90USB1286)|AT90USB1286|Printrboard
-  [Arduino Due](https://www.arduino.cc/en/Guide/ArduinoDue)|SAM3X8E|RAMPS-FD, RADDS, RAMPS4DUE
-  [ESP32](https://github.com/espressif/arduino-esp32)|ESP32|FYSETC E4, E4d@BOX, MRR
-  [LPC1768](https://www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/general-purpose-mcus/lpc1700-cortex-m3/512-kb-flash-64-kb-sram-ethernet-usb-lqfp100-package:LPC1768FBD100)|ARM® Cortex-M3|MKS SBASE, Re-ARM, Selena Compact
-  [LPC1769](https://www.nxp.com/products/processors-and-microcontrollers/arm-microcontrollers/general-purpose-mcus/lpc1700-cortex-m3/512-kb-flash-64-kb-sram-ethernet-usb-lqfp100-package:LPC1769FBD100)|ARM® Cortex-M3|Smoothieboard, Azteeg X5 mini, TH3D EZBoard
-  [STM32F103](https://www.st.com/en/microcontrollers-microprocessors/stm32f103.html)|ARM® Cortex-M3|Malyan M200, GTM32 Pro, MKS Robin, BTT SKR Mini
-  [STM32F401](https://www.st.com/en/microcontrollers-microprocessors/stm32f401.html)|ARM® Cortex-M4|ARMED, Rumba32, SKR Pro, Lerdge, FYSETC S6, Artillery Ruby
-  [STM32F7x6](https://www.st.com/en/microcontrollers-microprocessors/stm32f7x6.html)|ARM® Cortex-M7|The Borg, RemRam V1
-  [SAMD51P20A](https://www.adafruit.com/product/4064)|ARM® Cortex-M4|Adafruit Grand Central M4
-  [Teensy 3.5](https://www.pjrc.com/store/teensy35.html)|ARM® Cortex-M4|
-  [Teensy 3.6](https://www.pjrc.com/store/teensy36.html)|ARM® Cortex-M4|
-  [Teensy 4.0](https://www.pjrc.com/store/teensy40.html)|ARM® Cortex-M7|
-  [Teensy 4.1](https://www.pjrc.com/store/teensy41.html)|ARM® Cortex-M7|
-  Linux Native|x86/ARM/etc.|Raspberry Pi
+TMC2209 UART on all four axes, UBL 9×9 (81 points), S-curve acceleration, power-loss recovery,
+filament runout, `MULTI_VOLUME` (onboard SD + USB drive), EEPROM on the board's I2C chip.
+Full list in **[FIRMWARE_REFERENCE.md](FIRMWARE_REFERENCE.md)**, including a table of every
+option deliberately left **off** and why.
 
-## Submitting Changes
+---
 
-- Submit **Bug Fixes** as Pull Requests to the ([bugfix-2.0.x](https://github.com/MarlinFirmware/Marlin/tree/bugfix-2.0.x)) branch.
-- Follow the [Coding Standards](http://marlinfw.org/docs/development/coding_standards.html) to gain points with the maintainers.
-- Please submit your questions and concerns to the [Issue Queue](https://github.com/MarlinFirmware/Marlin/issues).
+## Tested hardware
 
-## Marlin Support
+| | |
+|---|---|
+| Board | MKS Robin Nano V3.1 (`BOARD_MKS_ROBIN_NANO_V3_1`, STM32F407VG) |
+| Screen | MKS TS35 V2.0, 480×320, `TFT_LVGL_UI` + `TOUCH_SCREEN` |
+| Drivers | TMC2209 ×4, UART mode (X / Y / Z / E0) |
+| Probe | BLTouch, `NOZZLE_TO_PROBE_OFFSET { -15, -10, -1 }` |
+| Leveling | `AUTO_BED_LEVELING_UBL`, 9×9 grid, `MULTIPLE_PROBING 2` |
+| Printer | Creality CR-10 (MKS Robin Nano board upgrade) |
+| Build volume | 310 × 310 × 400 mm |
+| Extruder | 1, `TEMP_SENSOR_0 1`, max 275 °C |
+| Bed | `TEMP_SENSOR_BED 1`, max 150 °C |
+| Steps/mm | `{ 80, 80, 400, 430.38554 }` |
+| Media | onboard SD + USB flash drive (`MULTI_VOLUME`) |
+| Host serial | `SERIAL_PORT_2 3` @ 115200 |
 
-The Issue Queue is reserved for Bug Reports and Feature Requests. To get help with configuration and troubleshooting, please use the following resources:
+Adjust steps/mm, bed size, probe offset and PID for your own machine before printing.
 
-- [Marlin Documentation](https://marlinfw.org) - Official Marlin documentation
-- [Marlin Discord](https://discord.gg/n5NJ59y) - Discuss issues with Marlin users and developers
-- Facebook Group ["Marlin Firmware"](https://www.facebook.com/groups/1049718498464482/)
-- RepRap.org [Marlin Forum](https://forums.reprap.org/list.php?415)
-- Facebook Group ["Marlin Firmware for 3D Printers"](https://www.facebook.com/groups/3Dtechtalk/)
-- [Marlin Configuration](https://www.youtube.com/results?search_query=marlin+configuration) on YouTube
+---
 
-## Contributors
+## Build
 
-Marlin is constantly improving thanks to a huge number of contributors from all over the world bringing their specialties and talents. Huge thanks are due to [all the contributors](https://github.com/MarlinFirmware/Marlin/graphs/contributors) who regularly patch up bugs, help direct traffic, and basically keep Marlin from falling apart. Marlin's continued existence would not be possible without them.
+PlatformIO, with the default environment already set in `platformio.ini`:
 
-## Administration
+```sh
+pio run -e mks_robin_nano_v3_1_usb_flash_drive_msc
+```
 
-Regular users can open and close their own issues, but only the administrators can do project-related things like add labels, merge changes, set milestones, and kick trolls. The current Marlin admin team consists of:
+Output: `.pio/build/mks_robin_nano_v3_1_usb_flash_drive_msc/Robin_nano_v3.bin`
 
- - Scott Lahteine [[@thinkyhead](https://github.com/thinkyhead)] - USA - Project Maintainer &nbsp; [💸 Donate](https://www.thinkyhead.com/donate-to-marlin)
- - Roxanne Neufeld [[@Roxy-3D](https://github.com/Roxy-3D)] - USA
- - Keith Bennett [[@thisiskeithb](https://github.com/thisiskeithb)] - USA &nbsp; [💸 Donate](https://github.com/sponsors/thisiskeithb)
- - Peter Ellens [[@ellensp](https://github.com/ellensp)] - New Zealand  &nbsp; [💸 Donate](https://ko-fi.com/ellensp)
- - Victor Oliveira [[@rhapsodyv](https://github.com/rhapsodyv)] - Brazil
- - Chris Pepper [[@p3p](https://github.com/p3p)] - UK
- - Jason Smith [[@sjasonsmith](https://github.com/sjasonsmith)] - USA
- - Luu Lac [[@shitcreek](https://github.com/shitcreek)] - USA
- - Bob Kuhn [[@Bob-the-Kuhn](https://github.com/Bob-the-Kuhn)] - USA
- - Erik van der Zalm [[@ErikZalm](https://github.com/ErikZalm)] - Netherlands &nbsp; [💸 Donate](https://flattr.com/submit/auto?user_id=ErikZalm&url=https://github.com/MarlinFirmware/Marlin&title=Marlin&language=&tags=github&category=software)
+VS Code + the PlatformIO IDE extension works too — open the folder and hit Build.
 
-## License
+## Flash
 
-Marlin is published under the [GPL license](/LICENSE) because we believe in open development. The GPL comes with both rights and obligations. Whether you use Marlin firmware as the driver for your open or closed-source product, you must keep Marlin open, and you must provide your compatible Marlin source code to end users upon request. The most straightforward way to comply with the Marlin license is to make a fork of Marlin on Github, perform your modifications, and direct users to your modified fork.
+Put these at the root of a FAT32 SD card:
 
-While we can't prevent the use of this code in products (3D printers, CNC, etc.) that are closed source or crippled by a patent, we would prefer that you choose another firmware or, better yet, make your own.
+| What | From |
+|---|---|
+| `Robin_nano_v3.bin` | the build output above |
+| `assets/` (140 `.bin` files, incl. `FontUNIGBK.bin`) | MKS's `Mks-Robin-Nano-Marlin2.0-Firmware-master/Firmware/assets` |
+
+Insert the card, power cycle. The screen flashes the firmware, then copies the pictures and font
+to SPI flash and renames `assets` to `_assets`. Only re-copy `assets` when the picture set
+changes — firmware-only updates need just the `.bin`.
+
+> The `MKS-Robin-Nano-V3.X-main` pack is **not** a drop-in substitute — it is missing
+> `bmp_sd*.bin`, `bmp_usb_disk*.bin`, `bmp_lcd_sd*.bin` and `bmp_init_state.bin`. With
+> `MULTI_VOLUME` on, the media-select buttons come up blank without them. Details in
+> [FIRMWARE_REFERENCE.md](FIRMWARE_REFERENCE.md).
+
+## First leveling run
+
+1. `Settings > Machine Para > Leveling > BLTouch`
+2. **Reset &amp; Probe** — zeroes the probe offset, homes, parks at bed centre at Z0.3
+   (soft endstops are off while this screen is open).
+3. Paper-gap the nozzle with **Z Offset + / −**, then **Save Offset** (`M500`).
+4. **Mesh > Build Mesh** — runs the stored auto-level command (81 points, a few minutes).
+5. **Save Mesh** if the command did not already save.
+
+Remaining-time on the print screen comes from the slicer's `M73` lines, not an estimate —
+enable M73 output in your slicer or the field stays blank.
+
+---
+
+## Documentation
+
+- **[FIRMWARE_REFERENCE.md](FIRMWARE_REFERENCE.md)** — screen map, LVGL gotchas (4-row limit,
+  picture lookup, queue injection limits), the full power-loss analysis, enabled/disabled
+  feature tables, and the picture audit script.
+- [docs/README_upstream_marlin.md](docs/README_upstream_marlin.md) — the original Marlin README.
+- [marlinfw.org](https://marlinfw.org/) — upstream documentation and G-code reference.
+
+## Contributing
+
+Issues and PRs welcome, especially other Robin Nano V3.x variants, TS35 screen quirks and
+LVGL screen additions. Please say which board revision, screen and probe you are on.
+
+## Credits &amp; license
+
+Based on [Marlin Firmware](https://github.com/MarlinFirmware/Marlin) 2.0.9.10 by Scott Lahteine
+and the Marlin contributors, with the MKS LVGL UI from
+[makerbase-mks](https://github.com/makerbase-mks). Licensed **GPL-3.0** — see [LICENSE](LICENSE).
+Marlin is free software; keep it free by publishing your changes.
+
+**No warranty.** 3D printers get hot and move fast. Check your thermistor types, thermal
+protection, endstops and probe offset before leaving a print unattended.
