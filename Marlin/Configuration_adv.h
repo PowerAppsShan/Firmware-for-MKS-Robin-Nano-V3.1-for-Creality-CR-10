@@ -1294,6 +1294,27 @@
   //#define LCD_SHOW_E_TOTAL
 #endif
 
+/**
+ * M73 for TFT_LVGL_UI
+ *
+ * LCD_SET_PROGRESS_MANUALLY is offered above only inside the HAS_DISPLAY block,
+ * and HAS_DISPLAY covers HAS_WIRED_LCD / EXTENSIBLE_UI / the DWIN UIs but not
+ * TFT_LVGL_UI, so M73 was compiled out entirely. The printing screen then had
+ * nothing but the media byte index to take progress from, which a print streamed
+ * from a host over the serial port does not have: its bar sat at 0% for the
+ * whole job. Defining it here brings M73 P back, and makes M115 advertise
+ * BUILD_PERCENT so a host knows to send it. Slicers that emit M73 (PrusaSlicer,
+ * SuperSlicer, Cura with the plugin) then drive the bar.
+ *
+ * SHOW_REMAINING_TIME is deliberately left off. It pulls in
+ * MarlinUI::_calculated_remaining_time(), which calls MarlinUI::_get_progress(),
+ * and that one is itself compiled only under HAS_DISPLAY -- turning it on fails
+ * to link against this UI. The time field goes on showing elapsed time.
+ */
+#if HAS_TFT_LVGL_UI
+  #define LCD_SET_PROGRESS_MANUALLY
+#endif
+
 // LCD Print Progress options
 #if EITHER(SDSUPPORT, LCD_SET_PROGRESS_MANUALLY)
   #if ANY(HAS_MARLINUI_U8GLIB, EXTENSIBLE_UI, HAS_MARLINUI_HD44780, IS_TFTGLCD_PANEL, IS_DWIN_MARLINUI)
@@ -1359,7 +1380,12 @@
 
   //#define MEDIA_MENU_AT_TOP               // Force the media menu to be listed on the top of the main menu
 
-  #define EVENT_GCODE_SD_ABORT "G28XY"      // G-code to run on SD Abort Print (e.g., "G28XY" or "G27")
+  // Lift Z before moving away, so the nozzle clears the part. G27 P2 raises by
+  // NOZZLE_PARK_POINT's Z (20mm, clamped to Z_MAX_POS) and only then travels to
+  // the park XY. Plain "G28XY" homes at the current Z and drags the nozzle
+  // across the print; plain "G27" (P0) only raises by NOZZLE_PARK_Z_RAISE_MIN
+  // (2mm) once the print is taller than 20mm, which is not much clearance.
+  #define EVENT_GCODE_SD_ABORT "G27 P2"     // G-code to run on SD Abort Print (e.g., "G28XY" or "G27")
 
   #if ENABLED(PRINTER_EVENT_LEDS)
     #define PE_LEDS_COMPLETED_TIME  (30*60) // (seconds) Time to keep the LED "done" color before restoring normal illumination
@@ -1909,7 +1935,7 @@
 #define LIN_ADVANCE
 #if ENABLED(LIN_ADVANCE)
   //#define EXTRA_LIN_ADVANCE_K // Enable for second linear advance constants
-  #define LIN_ADVANCE_K 0.0    // Unit: mm compression per 1mm/s extruder speed
+  #define LIN_ADVANCE_K 0.035    // Unit: mm compression per 1mm/s extruder speed
   //#define LA_DEBUG            // If enabled, this will generate debug information output over USB.
   //#define EXPERIMENTAL_SCURVE // Enable this option to permit S-Curve Acceleration
 #endif
@@ -2902,14 +2928,14 @@
   #define X2_HYBRID_THRESHOLD    100
   #define Y_HYBRID_THRESHOLD     100
   #define Y2_HYBRID_THRESHOLD    100
-  #define Z_HYBRID_THRESHOLD       3
+  #define Z_HYBRID_THRESHOLD       2
   #define Z2_HYBRID_THRESHOLD      3
   #define Z3_HYBRID_THRESHOLD      3
   #define Z4_HYBRID_THRESHOLD      3
   #define I_HYBRID_THRESHOLD       3
   #define J_HYBRID_THRESHOLD       3
   #define K_HYBRID_THRESHOLD       3
-  #define E0_HYBRID_THRESHOLD     30
+  #define E0_HYBRID_THRESHOLD      5
   #define E1_HYBRID_THRESHOLD     30
   #define E2_HYBRID_THRESHOLD     30
   #define E3_HYBRID_THRESHOLD     30
@@ -3723,6 +3749,42 @@
 #endif
 
 /**
+ * Full UBL mesh sequence, ported from the OctoPrint bed-level script.
+ *
+ * Driven by the touchscreen "Full Mesh" button (Settings > Machine Para >
+ * Leveling), which runs this and then opens the mesh visualizer, and by
+ * custom menu item 6 (Tool > More).
+ *
+ * These lines go straight to the parser via queue.inject(), which does not
+ * strip anything, so there are no ';' comments, no leading spaces and no
+ * host-only '@BEDLEVELVISUALIZER' marker. M140 does not block, so probing
+ * starts while the bed is still coming up to temperature -- swap it for
+ * "M190 R" to wait for the bed first.
+ */
+#define UBL_FULL_MESH_BED_TEMP 97     // Bed temperature to probe at
+#define UBL_FULL_MESH_SLOT      1     // EEPROM mesh slot to save to / load from
+#define UBL_FULL_MESH_GCODE \
+  "M140 S" STRINGIFY(UBL_FULL_MESH_BED_TEMP) "\n"  /* Start heating the bed */ \
+  "M117 Homing all axes\n" \
+  "G28\n"                                          /* Home all axes */ \
+  "M420 S0\n"                                      /* Leveling off before probing */ \
+  "M300 S1000 P500\n"                              /* Starting mesh */ \
+  "M117 Creating UBL mesh\n" \
+  "M155 S30\n"                                     /* Slow temp reports while probing */ \
+  "G29 P1\n"                                       /* Probe all reachable points */ \
+  "G29 P3\n"                                       /* Infer the unreachable ones */ \
+  "G29 S" STRINGIFY(UBL_FULL_MESH_SLOT) "\n"       /* Save mesh to the slot */ \
+  "G29 A\n"                                        /* Activate UBL */ \
+  "M420 S1 V\n"                                    /* Enable leveling, report mesh */ \
+  "G29 L" STRINGIFY(UBL_FULL_MESH_SLOT) "\n"       /* Load the slot back */ \
+  "M500\n"                                         /* Mesh + fade + active slot to EEPROM */ \
+  "M155 S3\n"                                      /* Normal temp reporting */ \
+  "M117 UBL Mesh Complete\n" \
+  "M300 S440 P200\n"                               /* Success tones */ \
+  "M300 S660 P250\n" \
+  "M300 S880 P300"
+
+/**
  * User-defined menu items to run custom G-code.
  * Up to 25 may be defined, but the actual number is LCD-dependent.
  */
@@ -3755,6 +3817,11 @@
   #define MAIN_MENU_ITEM_5_DESC "Home & Info"
   #define MAIN_MENU_ITEM_5_GCODE "G28\nM503"
   //#define MAIN_MENU_ITEM_5_CONFIRM
+
+  // The LVGL "More" screen has room for exactly six custom buttons.
+  #define MAIN_MENU_ITEM_6_DESC "Full UBL Mesh"
+  #define MAIN_MENU_ITEM_6_GCODE UBL_FULL_MESH_GCODE
+  //#define MAIN_MENU_ITEM_6_CONFIRM
 #endif
 
 // Custom Menu: Configuration Menu

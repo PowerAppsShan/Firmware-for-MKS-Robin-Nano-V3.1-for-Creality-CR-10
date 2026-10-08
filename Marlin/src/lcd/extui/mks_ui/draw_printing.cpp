@@ -30,6 +30,7 @@
 #include "../../../MarlinCore.h" // for marlin_state
 #include "../../../module/temperature.h"
 #include "../../../module/motion.h"
+#include "../../../module/planner.h"
 #include "../../../sd/cardreader.h"
 #include "../../../gcode/queue.h"
 #include "../../../gcode/gcode.h"
@@ -39,9 +40,7 @@
   #include "../../../feature/powerloss.h"
 #endif
 
-#if BOTH(LCD_SET_PROGRESS_MANUALLY, USE_M73_REMAINING_TIME)
-  #include "../../marlinui.h"
-#endif
+#include "../../marlinui.h"   // ui.progress_override, ui.get_remaining_time()
 
 extern lv_group_t *g;
 static lv_obj_t *scr;
@@ -71,6 +70,7 @@ enum {
 };
 
 bool once_flag; // = false
+static uint8_t printRate;   // Last progress % drawn, for disp_bar_text()
 extern bool flash_preview_begin, default_preview_flg, gcode_preview_over;
 extern uint32_t To_pre_view;
 
@@ -80,17 +80,13 @@ static void event_handler(lv_obj_t *obj, lv_event_t event) {
   switch (obj->mks_obj_id) {
     case ID_PAUSE:
       if (uiCfg.print_state == WORKING) {
-        #if ENABLED(SDSUPPORT)
-          card.pauseSDPrint();
-          stop_print_time();
-          uiCfg.print_state = PAUSING;
-        #endif
+        printer_pause_print();
         lv_imgbtn_set_src_both(buttonPause, "F:/bmp_resume.bin");
         lv_label_set_text(labelPause, printing_menu.resume);
         lv_obj_align(labelPause, buttonPause, LV_ALIGN_CENTER, 30, 0);
       }
       else if (uiCfg.print_state == PAUSED) {
-        uiCfg.print_state = RESUMING;
+        printer_resume_print();
         lv_imgbtn_set_src_both(obj, "F:/bmp_pause.bin");
         lv_label_set_text(labelPause, printing_menu.pause);
         lv_obj_align(labelPause, buttonPause, LV_ALIGN_CENTER, 30, 0);
@@ -210,15 +206,15 @@ void lv_draw_printing() {
   lv_bar_set_style(bar1, LV_BAR_STYLE_INDIC, &lv_bar_style_indic);
   lv_bar_set_anim_time(bar1, 1000);
   lv_bar_set_value(bar1, 0, LV_ANIM_ON);
+  printRate = 0;
   bar1ValueText = lv_label_create_empty(bar1);
-  lv_label_set_text(bar1ValueText, "0%");
-  lv_obj_align(bar1ValueText, bar1, LV_ALIGN_CENTER, 0, 0);
 
   disp_ext_temp();
   disp_bed_temp();
   disp_fan_speed();
   disp_print_time();
   disp_fan_Zpos();
+  disp_bar_text();
 }
 
 void disp_ext_temp() {
@@ -258,6 +254,45 @@ void disp_fan_Zpos() {
   lv_label_set_text(labelZpos, public_buf_l);
 }
 
+/**
+ * Progress, live speed and feedrate override, in the progress bar's own label.
+ *
+ * They go here because nothing else on this screen has room: the title row
+ * holds "Printing:" plus a 16-character file name, and the three icon rows and
+ * the button row below them are full. The bar is 270px wide, and the longest
+ * string this can produce is 22 characters. The label font is gb2312_puhui32,
+ * whose advance widths live on the SPI flash and so cannot be checked here, but
+ * MKS's own layout bounds them: labelExt1 sits at x=250 and must not reach the
+ * icon at x=350 while showing ~10 characters, so ASCII is <= ~10px per glyph,
+ * putting the worst case near 220px. A longer string would merely spill past
+ * the bar's ends, since lv_obj_align only centres the label.
+ *
+ * Called at 1Hz from GUI_RefreshPage() for the speed, and from setProBarRate()
+ * when a new progress figure comes in, so it owns the label and takes the
+ * progress from printRate rather than recomputing it.
+ */
+void disp_bar_text() {
+  // Speed of the move the stepper is currently tracing. Sync blocks carry no
+  // real speed, and the planner runs dry between moves and while paused, so
+  // fall back to the commanded feedrate: what the next move will run at.
+  float mm_s = MMS_SCALED(feedrate_mm_s);
+  const uint8_t tail = planner.block_buffer_tail;   // read the volatile once
+  if (tail != planner.block_buffer_head) {
+    block_t * const block = &planner.block_buffer[tail];
+    if (block->is_move()) mm_s = block->nominal_speed;
+  }
+
+  // The stepper ISR can retire and the planner refill that block while it is
+  // being read, so keep a torn value from overrunning the bar. The !(>= 0) form
+  // also rejects NaN, whose conversion to int would be undefined.
+  if (!(mm_s >= 0) || mm_s > 9999) mm_s = 0;
+
+  sprintf_P(public_buf_l, PSTR("%d%%  %dmm/s  F:%d%%"),
+    printRate, int(mm_s + 0.5f), constrain(feedrate_percentage, 0, 999));
+  lv_label_set_text(bar1ValueText, public_buf_l);
+  lv_obj_align(bar1ValueText, bar1, LV_ALIGN_CENTER, 0, 0);
+}
+
 void reset_print_time() {
   print_time.hours   = 0;
   print_time.minutes = 0;
@@ -272,6 +307,31 @@ void stop_print_time() { print_time.start = 0; }
 void setProBarRate() {
   int rate;
   volatile long long rate_tmp_r;
+
+  // A streamed print has no file on this side to measure, so the only progress
+  // figure there is comes from the host's own M73 P, by way of
+  // LCD_SET_PROGRESS_MANUALLY. Without M73 lines in the G-code the bar stays at
+  // 0% and everything else on the screen carries on working. There is no
+  // MF_SD_COMPLETE to watch for either -- printer_state_polling() ends the job.
+  if (uiCfg.host_printing) {
+    #if ENABLED(LCD_SET_PROGRESS_MANUALLY)
+      if (disp_state == PRINTING_UI) {
+        // Read progress_override the way MarlinUI::_get_progress() does, rather
+        // than calling it: that one is compiled behind HAS_DISPLAY, which
+        // TFT_LVGL_UI never defines, so it does not exist to link against. The
+        // card fallback it has after the override is no use here in any case.
+        printRate = constrain((ui.progress_override & PROGRESS_MASK) / (PROGRESS_SCALE), 0, 100);
+        lv_bar_set_value(bar1, printRate, LV_ANIM_ON);
+        disp_bar_text();
+      }
+    #endif
+    return;
+  }
+
+  // Both branches below divide by this. It is 0 until a print start fills it in,
+  // and on this MCU an integer divide by zero does not trap, it just yields
+  // nonsense.
+  if (!gCfgItems.curFilesize) return;
 
   if (!gCfgItems.from_flash_pic) {
     #if ENABLED(SDSUPPORT)
@@ -290,13 +350,18 @@ void setProBarRate() {
 
   if (disp_state == PRINTING_UI) {
     lv_bar_set_value(bar1, rate, LV_ANIM_ON);
-    sprintf_P(public_buf_l, "%d%%", rate);
-    lv_label_set_text(bar1ValueText, public_buf_l);
-    lv_obj_align(bar1ValueText, bar1, LV_ALIGN_CENTER, 0, 0);
+    printRate = constrain(rate, 0, 100);   // printRate is uint8_t; a bad filesize can overshoot
+    disp_bar_text();
 
     if (marlin_state == MF_SD_COMPLETE) {
       if (once_flag == 0) {
         stop_print_time();
+
+        // Nothing else ever took print_state out of WORKING at the end of a
+        // print. While it stayed there filament_check() kept running on the
+        // Ready screen, and printer_state_polling() -- which only adopts a job
+        // from IDLE -- could never pick up the next print started over serial.
+        uiCfg.print_state = IDLE;
 
         flash_preview_begin = false;
         default_preview_flg = false;

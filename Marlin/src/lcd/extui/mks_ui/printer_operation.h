@@ -28,6 +28,9 @@
 #define MIN_FILE_PRINTED   100 //5000
 
 void printer_state_polling();
+void printer_pause_print();
+void printer_resume_print();
+void printer_abort_print();
 void filament_pin_setup();
 void filament_check();
 

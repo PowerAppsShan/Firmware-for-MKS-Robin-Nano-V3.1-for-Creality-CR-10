@@ -38,9 +38,11 @@ Tool
  ├─ Preheat / Extrude / Move / Home
  ├─ Level ............... injects the stored auto-level command (see below)
  ├─ Filament change
- └─ More ................ G-code entry + CUSTOM_MENU_MAIN items 1,2,3,4,5
+ └─ More ................ G-code entry + CUSTOM_MENU_MAIN items 1..6
+                          item 6 = Full UBL Mesh (UBL_FULL_MESH_GCODE)
 
-Settings > Machine Para > Leveling
+Settings > Machine Para > Leveling (two pages)
+ page 1
  ├─ Tramming position
  ├─ Auto-level command ......... on-screen keyboard, stored in SPI flash
  ├─ Nozzle-to-probe offsets
@@ -51,6 +53,8 @@ Settings > Machine Para > Leveling
       ├─ step size ............. 0.01 / 0.05 / 0.1 mm
       ├─ Re-Probe .............. home + park again
       └─ Save Offset ........... M500, then G28 X Y
+ page 2
+ └─ Full Mesh + View .......... runs UBL_FULL_MESH_GCODE, opens the mesh view
 
 Settings > Machine Para > Advanced (two pages)
  page 1: Pause position, Filament settings, WiFi, Encoder
@@ -91,6 +95,61 @@ command that names a phase is left alone. Edit it any time from
 `RESTORE_LEVELING_AFTER_G28` is on, so a slicer's `G28` start G-code cannot
 silently switch the mesh back off.
 
+### Full Mesh + View
+
+`UBL_FULL_MESH_GCODE` (`Configuration_adv.h`) is the OctoPrint bed-level
+script, ported to run on the printer. Two entry points share the one macro:
+
+- `Settings > Machine Para > Leveling` page 2 > **Full Mesh + View** — injects
+  the sequence and immediately opens the mesh view, which repaints on the LVGL
+  timer, so the heatmap fills in cell by cell as the points are probed.
+- `Tool > More` > **Full UBL Mesh** — `MAIN_MENU_ITEM_6`, the same sequence
+  without the mesh view. Needs `bmp_custom6.bin` in SPI flash or the button
+  draws blank.
+
+```
+M140 S97        ; heat the bed (does NOT wait -- see below)
+M117 Homing all axes
+G28
+M420 S0         ; leveling off before probing
+M300 S1000 P500
+M117 Creating UBL mesh
+M155 S30        ; slow temp reports while probing
+G29 P1          ; probe the reachable points
+G29 P3          ; infer the rest
+G29 S1          ; save to slot 1
+G29 A           ; activate UBL
+M420 S1 V       ; enable leveling, report the mesh
+G29 L1          ; load slot 1 back
+M500            ; mesh + fade + active slot to EEPROM
+M155 S3
+M117 UBL Mesh Complete
+M300 S440 P200
+M300 S660 P250
+M300 S880 P300
+```
+
+Three things differ from the OctoPrint original, all because
+`queue.inject()` hands each line straight to the parser:
+
+- `;` comments and the leading indentation are gone — the injector does not
+  strip either.
+- `@BEDLEVELVISUALIZER` is gone. It is an OctoPrint plugin marker, not G-code,
+  and the firmware's own mesh view replaces what it was for.
+- `M140` does not block, so probing starts on a bed that is still heating, same
+  as in OctoPrint. Change it to `M190 R` STRINGIFY(UBL_FULL_MESH_BED_TEMP) to
+  wait for temperature first — it adds several minutes before the first probe.
+
+`UBL_FULL_MESH_BED_TEMP` (97) and `UBL_FULL_MESH_SLOT` (1) are separate defines
+next to the macro. The beeps need a buzzer on EXP1 — `BEEPER_PIN` is defined
+for this board whenever a TFT is enabled, so `M300` compiles and runs either
+way, but a bare TS35 with nothing on EXP1 is silent.
+
+Injection uses `queue.inject(F(...))`, which stores a flash pointer and drains
+it a line at a time, so the length of the sequence is not a problem. It does
+replace any injected queue already in flight, so do not start it on top of
+another macro.
+
 ## Power-loss recovery
 
 `POWER_LOSS_RECOVERY` with `PLR_ENABLED_DEFAULT true`. No `POWER_LOSS_PIN` on
@@ -128,6 +187,80 @@ actually wired in, and set `POWER_LOSS_STATE` / the pull direction to match it.
 
 Toggle at runtime with `M413 S0` / `M413 S1` + `M500`.
 
+## Printing from the computer
+
+The screen follows a print it did not start. `printer_state_polling()` adopts
+the job and draws the printing screen with the temperatures, Z, live speed,
+elapsed time, progress bar and a working Pause / Stop, which before this only
+happened for a print picked from the file list, from the WiFi module, or resumed
+after a power loss.
+
+Two kinds of job come in over USB:
+
+| Started by | Detected from | Progress | Pause | Stop |
+|---|---|---|---|---|
+| `M23` + `M24` — host prints a file off the printer's own SD / USB drive | `IS_SD_PRINTING()` | file byte index | as from the file list | as from the file list |
+| streamed G-code — host pushes the file line by line | `print_job_timer.isRunning()` | `M73 P` from the slicer | `M25` | `//action:cancel` + local abort |
+
+`uiCfg.host_printing` marks the second kind, because almost everything the
+printing screen does has to work differently for it.
+
+**Detection.** A streamed job has no file on this side, so `print_job_timer` is
+the only thing that knows one is running. With `PRINTJOB_TIMER_AUTOSTART` only
+`M109` and `M190` start that timer — `M104` and `M140` can stop it but never
+start it (`Temperature::auto_job_check_timer()`) — so it starts at the
+wait-for-temperature that opens every slicer's start G-code. A preheat does not
+trip it: hosts use `M104` / `M140`, and the Preheat screen calls
+`setTargetHotend()` / `setTargetBed()` without going through G-code at all.
+Typing `M109` or `M190` into the G-code screen *does* trip it, and lands on the
+printing screen with nothing printing; Stop clears that.
+
+**Progress** comes from the slicer's `M73 P` lines, read straight out of
+`ui.progress_override` — `MarlinUI::_get_progress()` cannot be called because it
+is compiled behind `HAS_DISPLAY`. PrusaSlicer and SuperSlicer emit `M73`
+natively, Cura needs a plugin; without it the bar stays at 0% and everything
+else on the screen still works. `M115` now advertises `BUILD_PERCENT`.
+
+**Pause** injects `M25`, which with `PARK_HEAD_ON_PAUSE` is `M125`: it parks the
+head and then blocks in `wait_for_confirmation()`. Because `loop()` is stuck
+inside that call, `queue.advance()` stops running and the host's stream backs up
+behind a line that is never acknowledged — that, not the host's cooperation, is
+what actually halts a streamed job. `M125` also sends `//action:paused` and puts
+the Advanced Pause dialogs up; their Confirm clears `wait_for_user`, and `M125`
+unparks, restarts the job timer and returns on its own. So the screen takes
+`print_state` back from Marlin rather than driving it, which also keeps it right
+when the *host* sends `M25` / `M24` / `M108`.
+
+**Stop** sends `//action:cancel` before the local abort. Clearing the queue only
+drops the lines already received; nothing on the printer can stop a host from
+sending more, so a host that ignores action commands will keep streaming at a
+printer whose heaters have just been turned off. OctoPrint, Pronterface and
+PrusaSlicer's host upload all act on it.
+
+**End of print.** There is no `MF_SD_COMPLETE` for a streamed job, so the end is
+a stopped job timer with the planner drained: the end G-code's `M104 S0` /
+`M140 S0` stops the timer, as does `M77`. A Stop goes through
+`printer_abort_print()`, which clears `host_printing` before the timer stops, so
+the finish dialog only appears for a job that ran to its end. A host that cools
+the nozzle mid-print would also look like an end of print, and one that leaves
+the heaters on at the end leaves the screen in print mode until Stop is pressed.
+
+The title row reads `Printing:Host`, since `list_file.long_name[sel_id]` holds
+whichever file was browsed last and would be a lie rather than a blank.
+
+### Two fixes this needed
+
+- A finished media print never left `print_state == WORKING`. Nothing reset it,
+  so `filament_check()` went on running on the Ready screen, and
+  `printer_state_polling()` — which only adopts a job from `IDLE` — could not
+  pick up a *second* print started over serial. `setProBarRate()` now sets
+  `IDLE` along with the finish dialog.
+- `Operation > Filament change` and the MKS filament-detect switch both set
+  `print_state = PAUSING` directly. That state is only ever left by the media
+  path, which waits on `card.getIndex() > MIN_FILE_PRINTED`, so on a streamed
+  job it stuck there with Pause and Resume both dead. Both now call
+  `printer_pause_print()`.
+
 ## Enabled features
 
 Motion: `S_CURVE_ACCELERATION`, `ADAPTIVE_STEP_SMOOTHING`, `ARC_SUPPORT`,
@@ -141,16 +274,24 @@ Probing / leveling: `BLTOUCH`, `AUTO_BED_LEVELING_UBL` 9x9 (81 points),
 Printing: `POWER_LOSS_RECOVERY`, `ADVANCED_PAUSE_FEATURE` +
 `PARK_HEAD_ON_PAUSE`, `NOZZLE_PARK_FEATURE`, `FILAMENT_RUNOUT_SENSOR`,
 `FILAMENT_LOAD_UNLOAD_GCODES` (M701/M702), `FWRETRACT` (G10/G11),
-`ADAPTIVE_FAN_SLOWING`, `PRINTCOUNTER` (M78),
-`LCD_SET_PROGRESS_MANUALLY` + `SHOW_REMAINING_TIME` +
-`USE_M73_REMAINING_TIME`, `SDCARD_SORT_ALPHA`, `SD_ABORT_ON_ENDSTOP_HIT`,
+`ADAPTIVE_FAN_SLOWING`, `PRINTCOUNTER` (M78), `LCD_SET_PROGRESS_MANUALLY`
+(M73), `SDCARD_SORT_ALPHA`, `SD_ABORT_ON_ENDSTOP_HIT`,
 `MULTI_VOLUME` (onboard SD + USB drive), `LONG_FILENAME_HOST_SUPPORT`,
 `BINARY_FILE_TRANSFER`.
 
-`draw_printing.cpp:247` only shows a remaining-time field when
-`LCD_SET_PROGRESS_MANUALLY` and `USE_M73_REMAINING_TIME` are both on, so the
-figure comes from the slicer's `M73` lines, not from an estimate. Slice with
-M73 output enabled or the field stays blank.
+`LCD_SET_PROGRESS_MANUALLY` is defined for `HAS_TFT_LVGL_UI` in a block of its
+own, because stock Marlin only offers it inside `#if HAS_DISPLAY` and
+`HAS_DISPLAY` does not cover this UI. `SanityCheck.h` had to learn about
+`HAS_TFT_LVGL_UI` as well. It is on for the progress bar during a print streamed
+from the computer, which has no file on the media to measure.
+
+`SHOW_REMAINING_TIME` / `USE_M73_REMAINING_TIME` are **off** — they are gated on
+display families this UI is not one of, and turning them on fails to link: they
+pull in `MarlinUI::_calculated_remaining_time()`, which calls
+`MarlinUI::_get_progress()`, and that one is compiled only under `HAS_DISPLAY`.
+So the time field on the printing screen is elapsed time (`HH:MM:SS`), not
+remaining time, and `draw_printing.cpp`'s `USE_M73_REMAINING_TIME` branch is
+dead code in this build.
 
 Machine: `ENDSTOP_INTERRUPTS_FEATURE`, `ASSISTED_TRAMMING` (`G35`),
 `GCODE_MACROS` (M810-M819), `GCODE_REPEAT_MARKERS` (M808),

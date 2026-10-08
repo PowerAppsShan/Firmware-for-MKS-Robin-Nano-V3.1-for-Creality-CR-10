@@ -81,7 +81,8 @@ static void btn_ok_event_cb(lv_obj_t *btn, lv_event_t event) {
     reset_print_time();
     start_print_time();
 
-    uiCfg.print_state = WORKING;
+    uiCfg.print_state   = WORKING;
+    uiCfg.host_printing = false;   // this one comes off the media, not the serial port
     lv_clear_dialog();
     lv_draw_printing();
 
@@ -93,14 +94,18 @@ static void btn_ok_event_cb(lv_obj_t *btn, lv_event_t event) {
         SdFile file, *curDir;
         card.abortFilePrintNow();
         const char * const fname = card.diveToFile(false, curDir, cur_name);
-        if (!fname) return;
+        // Leaving print_state as WORKING with nothing printing gives a printing
+        // screen whose Pause/Resume act on a phantom job and whose Stop cannot
+        // clear it, since no file is open for abortFilePrintSoon() to see.
+        if (!fname) { uiCfg.print_state = IDLE; stop_print_time(); return; }
         if (file.open(curDir, fname, O_READ)) {
           gCfgItems.curFilesize = file.fileSize();
           file.close();
           update_spi_flash();
         }
         card.openFileRead(cur_name);
-        if (card.isFileOpen()) {
+        if (!card.isFileOpen()) { uiCfg.print_state = IDLE; stop_print_time(); }
+        else {
           feedrate_percentage = 100;
           planner.flow_percentage[0] = 100;
           planner.e_factor[0] = planner.flow_percentage[0] * 0.01f;
@@ -116,15 +121,9 @@ static void btn_ok_event_cb(lv_obj_t *btn, lv_event_t event) {
     #endif
   }
   else if (DIALOG_IS(TYPE_STOP)) {
-    wait_for_heatup = false;
-    stop_print_time();
+    printer_abort_print();
     lv_clear_dialog();
     lv_draw_ready_print();
-
-    #if ENABLED(SDSUPPORT)
-      uiCfg.print_state = IDLE;
-      card.abortFilePrintSoon();
-    #endif
   }
   else if (DIALOG_IS(TYPE_FINISH_PRINT)) {
     clear_cur_ui();

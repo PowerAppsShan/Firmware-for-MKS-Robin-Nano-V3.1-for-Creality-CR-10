@@ -43,6 +43,7 @@ void disp_bed_temp();
 void disp_fan_speed();
 void disp_print_time();
 void disp_fan_Zpos();
+void disp_bar_text();
 void reset_print_time();
 void start_print_time();
 void stop_print_time();

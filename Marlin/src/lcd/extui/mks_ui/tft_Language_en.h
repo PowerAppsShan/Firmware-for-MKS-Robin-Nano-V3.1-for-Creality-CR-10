@@ -113,6 +113,7 @@
 #define MESH_VIEW_TITTLE_EN             "Mesh"
 #define MESH_BUILD_EN                   "Build Mesh"
 #define MESH_SAVE_EN                    "Save Mesh"
+#define MESH_FULL_LEVEL_EN              "Full Mesh + View"
 
 #define LEVELING_ZOFFSET_TITLE_EN       "Machine Settings>Z Offset Wizard"
 

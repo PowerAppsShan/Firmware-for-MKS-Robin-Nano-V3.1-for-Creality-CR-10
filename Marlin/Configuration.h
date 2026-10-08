@@ -601,9 +601,9 @@
     #define DEFAULT_Ki_LIST {   1.08,   1.08 }
     #define DEFAULT_Kd_LIST { 114.00, 114.00 }
   #else
-    #define DEFAULT_Kp  21.80
-    #define DEFAULT_Ki   2.13
-    #define DEFAULT_Kd 55.80
+    #define DEFAULT_Kp  21.07
+    #define DEFAULT_Ki   2.00
+    #define DEFAULT_Kd 55.62
   #endif
 #endif // PIDTEMP
 
@@ -640,11 +640,11 @@
   //#define MIN_BED_POWER 0
   //#define PID_BED_DEBUG // Sends debug data to the serial port.
 
-  // 120V 250W silicone heater into 4mm borosilicate (MendelMax 1.5+)
-  // from FOPDT model - kp=.39 Tp=405 Tdead=66, Tc set to 79.2, aggressive factor of .15 (vs .1, 1, 10)
-  #define DEFAULT_bedKp 13.00
-  #define DEFAULT_bedKi .023
-  #define DEFAULT_bedKd 305.4
+  // Autotuned with M303 E-1 (PID bed autotune) on this machine
+  // M304 P77.06 I13.19 D300.00
+  #define DEFAULT_bedKp 77.06
+  #define DEFAULT_bedKi 13.19
+  #define DEFAULT_bedKd 300.00
 
   // FIND YOUR OWN: "M303 E-1 C8 S90" to run autotune on the bed at 90 degreesC for 8 cycles.
 #endif // PIDTEMPBED
@@ -927,7 +927,7 @@
  * Override with M92
  *                                      X, Y, Z [, I [, J [, K]]], E0 [, E1[, E2...]]
  */
-#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 430.38554 }
+#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80.04, 80.18, 385.26, 444.48 }
 
 /**
  * Default Max Feed Rate (mm/s)
@@ -962,7 +962,7 @@
  *   M204 R    Retract Acceleration
  *   M204 T    Travel Acceleration
  */
-#define DEFAULT_ACCELERATION          1500    // X, Y, Z and E acceleration for printing moves
+#define DEFAULT_ACCELERATION           900    // X, Y, Z and E acceleration for printing moves
 #define DEFAULT_RETRACT_ACCELERATION  1500    // E acceleration for retracts
 #define DEFAULT_TRAVEL_ACCELERATION   1500    // X, Y, Z acceleration for travel (non printing) moves
 
@@ -1179,7 +1179,7 @@
  *     |    [-]    |
  *     O-- FRONT --+
  */
-#define NOZZLE_TO_PROBE_OFFSET {-15,-10, -1 } 
+#define NOZZLE_TO_PROBE_OFFSET {-15,-10, -3.84 }
 
 // Most probes should stay away from the edges of the bed, but
 // with NOZZLE_AS_PROBE this can be negative for a wider probing area.
@@ -1576,7 +1576,7 @@
   // The height can be set with M420 Z<height>
   #define ENABLE_LEVELING_FADE_HEIGHT
   #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
-    #define DEFAULT_LEVELING_FADE_HEIGHT 10.0 // (mm) Default fade height.
+    #define DEFAULT_LEVELING_FADE_HEIGHT 2.0  // (mm) Default fade height.
   #endif
 
   // For Cartesian machines, instead of dividing moves on mesh boundaries,
@@ -1860,13 +1860,13 @@
 #define PREHEAT_1_LABEL       "PLA"
 #define PREHEAT_1_TEMP_HOTEND 180
 #define PREHEAT_1_TEMP_BED     70
-#define PREHEAT_1_TEMP_CHAMBER 35
+// #define PREHEAT_1_TEMP_CHAMBER 35
 #define PREHEAT_1_FAN_SPEED     0 // Value from 0 to 255
 
 #define PREHEAT_2_LABEL       "ABS"
 #define PREHEAT_2_TEMP_HOTEND 250
-#define PREHEAT_2_TEMP_BED    100
-#define PREHEAT_2_TEMP_CHAMBER 35
+#define PREHEAT_2_TEMP_BED    98
+// #define PREHEAT_2_TEMP_CHAMBER 35
 #define PREHEAT_2_FAN_SPEED     0 // Value from 0 to 255
 
 /**

@@ -75,6 +75,7 @@ void machine_setting_disp() {
   machine_menu.MeshViewTitle            = MESH_VIEW_TITTLE_EN;
   machine_menu.MeshBuild                = MESH_BUILD_EN;
   machine_menu.MeshSave                 = MESH_SAVE_EN;
+  machine_menu.MeshFullLevel            = MESH_FULL_LEVEL_EN;
 
   if (gCfgItems.language == LANG_SIMPLE_CHINESE) {
     MachinePara_menu.title              = MACHINE_PARA_TITLE_CN;

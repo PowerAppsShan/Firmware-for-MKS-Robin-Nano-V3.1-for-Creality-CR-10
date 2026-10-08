@@ -967,7 +967,8 @@ static void wifi_gcode_exec(uint8_t *cmd_line) {
               reset_print_time();
               start_print_time();
               preview_gcode_prehandle(list_file.file_name[sel_id]);
-              uiCfg.print_state = WORKING;
+              uiCfg.print_state   = WORKING;
+              uiCfg.host_printing = false;   // off the media, not streamed over serial
               lv_draw_printing();
 
               #if ENABLED(SDSUPPORT)
@@ -1051,14 +1052,9 @@ static void wifi_gcode_exec(uint8_t *cmd_line) {
         case 26:
           // Stop print file
           if ((uiCfg.print_state == WORKING) || (uiCfg.print_state == PAUSED) || (uiCfg.print_state == REPRINTING)) {
-            stop_print_time();
+            printer_abort_print();
 
             clear_cur_ui();
-            #if ENABLED(SDSUPPORT)
-              uiCfg.print_state = IDLE;
-              card.abortFilePrintSoon();
-            #endif
-
             lv_draw_ready_print();
 
             SEND_OK_TO_WIFI;

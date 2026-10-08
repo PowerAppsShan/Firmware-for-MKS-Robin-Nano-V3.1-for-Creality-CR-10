@@ -27,6 +27,7 @@
 #include "draw_ui.h"
 #include <lv_conf.h>
 
+#include "../../marlinui.h"
 #include "../../../feature/pause.h"
 #include "../../../inc/MarlinConfig.h"
 
@@ -47,6 +48,23 @@ void lv_draw_pause_message(const PauseMessage msg) {
     case PAUSE_MESSAGE_STATUS:
     default: break;
   }
+}
+
+/**
+ * The LVGL UI is not an ExtUI client and has no MarlinUI menu, so without this
+ * hook MarlinUI::pause_show_message() compiles to a no-op and every Advanced
+ * Pause prompt is silently dropped. wait_for_confirmation() then spins on
+ * 'wait_for_user' with nothing on screen able to clear it, hanging M125, M600
+ * and the filament runout script forever.
+ */
+void MarlinUI::pause_show_message(
+  const PauseMessage message,
+  const PauseMode mode/*=PAUSE_MODE_SAME*/,
+  const uint8_t extruder/*=active_extruder*/
+) {
+  if (mode != PAUSE_MODE_SAME) pause_mode = mode;
+  UNUSED(extruder);
+  lv_draw_pause_message(message);
 }
 
 #endif // HAS_TFT_LVGL_UI && ADVANCED_PAUSE_FEATURE

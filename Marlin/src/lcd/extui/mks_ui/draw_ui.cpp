@@ -563,7 +563,10 @@ char *creat_title_text() {
 
   if (disp_state_stack._disp_state[disp_state_stack._disp_index] == PRINTING_UI) {
     titleText_cat(public_buf_m, sizeof(public_buf_m), (char *)":");
-    titleText_cat(public_buf_m, sizeof(public_buf_m), tmpCurFileStr);
+    // A print streamed from the host has no file on the media, so there is no
+    // name to show -- and list_file.long_name[sel_id] still holds whichever file
+    // was browsed last, which would be a lie rather than a blank.
+    titleText_cat(public_buf_m, sizeof(public_buf_m), uiCfg.host_printing ? (char *)"Host" : tmpCurFileStr);
   }
 
   if (strlen(public_buf_m) > MAX_TITLE_LEN) {
@@ -674,7 +677,9 @@ char *creat_title_text() {
         SdFile file;
         SdFile *curDir;
         const char * const fname = card.diveToFile(false, curDir, cur_name);
-        if (!fname) return;
+        // Don't leave print_state WORKING with nothing printing (see the same
+        // guard on the no-preview path in draw_dialog.cpp).
+        if (!fname) { uiCfg.print_state = IDLE; stop_print_time(); return; }
         if (file.open(curDir, fname, O_READ)) {
           gCfgItems.curFilesize = file.fileSize();
           file.close();
@@ -682,7 +687,8 @@ char *creat_title_text() {
         }
 
         card.openFileRead(cur_name);
-        if (card.isFileOpen()) {
+        if (!card.isFileOpen()) { uiCfg.print_state = IDLE; stop_print_time(); }
+        else {
           feedrate_percentage = 100;
           planner.flow_percentage[0] = 100;
           planner.e_factor[0]        = planner.flow_percentage[0] * 0.01;
@@ -793,6 +799,7 @@ void GUI_RefreshPage() {
         disp_fan_speed();
         disp_print_time();
         disp_fan_Zpos();
+        disp_bar_text();
       }
       if (printing_rate_update_flag || marlin_state == MF_SD_COMPLETE) {
         printing_rate_update_flag = false;

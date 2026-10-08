@@ -118,6 +118,7 @@ typedef struct machine_common_disp {
   const char *MeshViewTitle;
   const char *MeshBuild;
   const char *MeshSave;
+  const char *MeshFullLevel;
 
   const char *LevelingSubConfTitle;
   const char *AutoLevelEnable;

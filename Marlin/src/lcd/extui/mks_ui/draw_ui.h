@@ -227,7 +227,12 @@ typedef struct UI_Config_Struct {
           filament_loading_completed:1,
           filament_unloading_completed:1,
           filament_loading_time_flg:1,
-          filament_unloading_time_flg:1;
+          filament_unloading_time_flg:1,
+          // The job on the printing screen is streamed from the host over the
+          // serial port, so there is no file behind it on the media: no byte
+          // index to take progress from, and nothing for card.pauseSDPrint()
+          // or card.abortFilePrintSoon() to act on.
+          host_printing:1;
   uint8_t wifi_name[32];
   uint8_t wifi_key[64];
   uint8_t cloud_hostUrl[96];

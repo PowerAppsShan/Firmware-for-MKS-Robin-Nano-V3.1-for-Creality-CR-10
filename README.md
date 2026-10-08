@@ -35,7 +35,9 @@ Everything in here was built, flashed and used on real hardware — not a config
 | **Editable auto-level command** — on-screen keyboard, stored in SPI flash, used by the Tool **Level** button | `Settings > Machine Para > Leveling > Auto-level command` |
 | **Working Level button** — injects a real UBL phase sequence instead of a bare `G29` | `Tool > Level` |
 | **Paginated Advanced settings** — second page for Z Offset Wizard, BLTouch, Mesh | `Settings > Machine Para > Advanced` |
-| **Custom menu items on the touchscreen** — `CUSTOM_MENU_MAIN` G-code macros surfaced in the LVGL UI | `Tool > More` |
+| **Full Mesh + View** — runs the full OctoPrint-style UBL script (heat bed, home, probe, save, activate) and opens the mesh view, which fills in live as points are probed | `Settings > Machine Para > Leveling` page 2 |
+| **Custom menu items on the touchscreen** — `CUSTOM_MENU_MAIN` G-code macros surfaced in the LVGL UI, incl. a **Full UBL Mesh** button | `Tool > More` |
+| **Paginated Leveling settings** — second page for Full Mesh + View | `Settings > Machine Para > Leveling` |
 
 ### Fixes
 
@@ -119,6 +121,14 @@ changes — firmware-only updates need just the `.bin`.
 3. Paper-gap the nozzle with **Z Offset + / −**, then **Save Offset** (`M500`).
 4. **Mesh > Build Mesh** — runs the stored auto-level command (81 points, a few minutes).
 5. **Save Mesh** if the command did not already save.
+
+Or, in one button: `Settings > Machine Para > Leveling` → **next** → **Full Mesh + View**.
+That runs `UBL_FULL_MESH_GCODE` — heat the bed to 97 °C, home, `G29 P1`/`P3`, save to
+mesh slot 1, activate, `M500` — and opens the heatmap while it probes. Same sequence is
+on `Tool > More` as **Full UBL Mesh**. It is the OctoPrint bed-level script with the
+`;` comments and the `@BEDLEVELVISUALIZER` plugin marker removed; edit it in
+`Configuration_adv.h`. Note `M140` does not wait for the bed — see
+[FIRMWARE_REFERENCE.md](FIRMWARE_REFERENCE.md) for how to make it.
 
 Remaining-time on the print screen comes from the slicer's `M73` lines, not an estimate —
 enable M73 output in your slicer or the field stays blank.
